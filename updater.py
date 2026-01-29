@@ -61,7 +61,8 @@ def sync_and_expire_leads():
             if not plan_ended:
                 continue
 
-            plan_ended_date = plan_ended.split("T")[0]
+            # Extract date (YYYY-MM-DD) - handle 'T' or space or full timestamp
+            plan_ended_date = plan_ended[:10]
             
             # Use JB-ID as primary key for sync if it exists, otherwise email
             key = jb_id if jb_id else email
@@ -114,7 +115,7 @@ def sync_and_expire_leads():
                 paused_rows = 0
                 if jb_id:
                     cur.execute(
-                        'UPDATE public.karmafy_lead SET status = \'paused\' WHERE "apwId" = %s AND status = \'in progress\'',
+                        'UPDATE public.karmafy_lead SET status = \'paused\' WHERE "apwId" = %s AND LOWER(status) = \'in progress\'',
                         (jb_id,)
                     )
                     paused_rows = cur.rowcount
@@ -122,7 +123,7 @@ def sync_and_expire_leads():
                 # Fallback to email if JB-ID update didn't affect any rows
                 if paused_rows == 0 and email:
                     cur.execute(
-                        "UPDATE public.karmafy_lead SET status = 'paused' WHERE LOWER(email) = LOWER(%s) AND status = 'in progress'",
+                        "UPDATE public.karmafy_lead SET status = 'paused' WHERE LOWER(email) = LOWER(%s) AND LOWER(status) = 'in progress'",
                         (email,)
                     )
                     paused_rows = cur.rowcount
