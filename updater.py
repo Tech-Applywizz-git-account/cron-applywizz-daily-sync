@@ -92,10 +92,9 @@ def sync_and_expire_leads():
             # Priority 1: Use JB-ID (as requested)
             rows_affected = 0
             if jb_id:
-                cur.execute(
-                    'UPDATE public.karmafy_lead SET "endDate" = %s WHERE "apwId" = %s',
-                    (latest_date, jb_id)
-                )
+                sql = 'UPDATE public.karmafy_lead SET "endDate" = %s WHERE "apwId" = %s'
+                print(f"📝 Executing SQL: {sql} with values {(latest_date, jb_id)}")
+                cur.execute(sql, (latest_date, jb_id))
                 rows_affected = cur.rowcount
             
             # Priority 2: Fallback to email if JB-ID didn't match or doesn't exist
