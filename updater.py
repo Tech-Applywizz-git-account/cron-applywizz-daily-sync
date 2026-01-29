@@ -44,53 +44,93 @@ def sync_and_expire_leads():
         # STEP 1: Fetch transactions from Supabase
         print("🔄 Fetching transactions from Supabase (jobboard_transactions)...")
         response = supabase.table("jobboard_transactions") \
-            .select("email, plan_ended") \
+            .select("jb_id, email, plan_ended") \
             .execute()
 
         transactions = response.data
         print(f"✅ Found {len(transactions)} transactions in Supabase.")
 
-        # Dictionary to keep the latest end date per email
+        # Dictionary to keep the latest end date per JB-ID (fallback to email)
         latest_end_dates = {}
 
         for trans in transactions:
+            jb_id = trans.get("jb_id")
             email = trans.get("email")
             plan_ended = trans.get("plan_ended")
             
-            if not email or not plan_ended:
+            if not plan_ended:
                 continue
 
             plan_ended_date = plan_ended.split("T")[0]
             
-            if email not in latest_end_dates or plan_ended_date > latest_end_dates[email]:
-                latest_end_dates[email] = plan_ended_date
+            # Use JB-ID as primary key for sync if it exists, otherwise email
+            key = jb_id if jb_id else email
+            
+            if not key:
+                continue
+            
+            if key not in latest_end_dates or plan_ended_date > latest_end_dates[key]['date']:
+                latest_end_dates[key] = {
+                    'date': plan_ended_date,
+                    'jb_id': jb_id,
+                    'email': email
+                }
 
         # STEP 2: Sync and Pause based on latest end dates in Render DB
         updated_count = 0
         paused_count = 0
         print(f"🚀 Starting sync for {len(latest_end_dates)} unique users...")
 
-        for email, latest_date in latest_end_dates.items():
-            print(f"🔄 Syncing end date for: {email} ({latest_date})")
+        for key, data in latest_end_dates.items():
+            latest_date = data['date']
+            jb_id = data['jb_id']
+            email = data['email']
+            
+            print(f"🔄 Syncing end date for: {key} ({latest_date})")
+            
             # 1. Sync the end date to karmafy_lead in Render
-            # The table name is karmafy_lead, column is "endDate"
-            cur.execute(
-                'UPDATE public.karmafy_lead SET "endDate" = %s WHERE email = %s',
-                (latest_date, email)
-            )
-            if cur.rowcount > 0:
+            # Priority 1: Use JB-ID (as requested)
+            rows_affected = 0
+            if jb_id:
+                cur.execute(
+                    'UPDATE public.karmafy_lead SET "endDate" = %s WHERE jb_id = %s',
+                    (latest_date, jb_id)
+                )
+                rows_affected = cur.rowcount
+            
+            # Priority 2: Fallback to email if JB-ID didn't match or doesn't exist
+            if rows_affected == 0 and email:
+                cur.execute(
+                    'UPDATE public.karmafy_lead SET "endDate" = %s WHERE LOWER(email) = LOWER(%s)',
+                    (latest_date, email)
+                )
+                rows_affected = cur.rowcount
+
+            if rows_affected > 0:
                 updated_count += 1
 
             # 2. Check for expiration
             if latest_date <= today:
                 # Update status to 'paused' if currently 'in progress'
-                cur.execute(
-                    "UPDATE public.karmafy_lead SET status = 'paused' WHERE email = %s AND status = 'in progress'",
-                    (email,)
-                )
-                if cur.rowcount > 0:
-                    paused_count += cur.rowcount
-                    print(f"⏸️  Paused lead for: {email} (Plan ended on {latest_date})")
+                paused_rows = 0
+                if jb_id:
+                    cur.execute(
+                        "UPDATE public.karmafy_lead SET status = 'paused' WHERE jb_id = %s AND status = 'in progress'",
+                        (jb_id,)
+                    )
+                    paused_rows = cur.rowcount
+                
+                # Fallback to email if JB-ID update didn't affect any rows
+                if paused_rows == 0 and email:
+                    cur.execute(
+                        "UPDATE public.karmafy_lead SET status = 'paused' WHERE LOWER(email) = LOWER(%s) AND status = 'in progress'",
+                        (email,)
+                    )
+                    paused_rows = cur.rowcount
+                    
+                if paused_rows > 0:
+                    paused_count += paused_rows
+                    print(f"⏸️  Paused lead for: {key} (Plan ended on {latest_date})")
 
         conn.commit()
 
