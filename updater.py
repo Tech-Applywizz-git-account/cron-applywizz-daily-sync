@@ -68,8 +68,10 @@ def sync_and_expire_leads():
         # STEP 2: Sync and Pause based on latest end dates in Render DB
         updated_count = 0
         paused_count = 0
+        print(f"🚀 Starting sync for {len(latest_end_dates)} unique users...")
 
         for email, latest_date in latest_end_dates.items():
+            print(f"🔄 Syncing end date for: {email} ({latest_date})")
             # 1. Sync the end date to karmafy_lead in Render
             # The table name is karmafy_lead, column is "endDate"
             cur.execute(
