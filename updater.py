@@ -93,7 +93,7 @@ def sync_and_expire_leads():
             rows_affected = 0
             if jb_id:
                 cur.execute(
-                    'UPDATE public.karmafy_lead SET "endDate" = %s WHERE jb_id = %s',
+                    'UPDATE public.karmafy_lead SET "endDate" = %s WHERE "apwId" = %s',
                     (latest_date, jb_id)
                 )
                 rows_affected = cur.rowcount
@@ -115,7 +115,7 @@ def sync_and_expire_leads():
                 paused_rows = 0
                 if jb_id:
                     cur.execute(
-                        "UPDATE public.karmafy_lead SET status = 'paused' WHERE jb_id = %s AND status = 'in progress'",
+                        'UPDATE public.karmafy_lead SET status = \'paused\' WHERE "apwId" = %s AND status = \'in progress\'',
                         (jb_id,)
                     )
                     paused_rows = cur.rowcount
